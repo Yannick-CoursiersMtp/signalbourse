@@ -4,14 +4,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # -------------------------------
-# Fonction backtest
+# Fonction de backtest corrigée
 # -------------------------------
 def run_backtest(data):
     data = data.copy()
+
+    # Calcul des indicateurs nécessaires
     data["MA20"] = data["Close"].rolling(window=20).mean()
     data["MA50"] = data["Close"].rolling(window=50).mean()
     data["Vol20"] = data["Volume"].rolling(window=20).mean()
 
+    # Création du signal d'achat
     data["Signal"] = (
         (data["Close"] > data["MA20"])
         & (data["MA20"] > data["MA50"])
@@ -42,6 +45,7 @@ def run_backtest(data):
     ) if any(g < 0 for g in gains) else "Infini"
 
     score = round(win_rate * 0.5 + avg_gain * 0.5, 2)
+
     return {
         "nb_trades": len(gains),
         "win_rate": win_rate,
@@ -51,9 +55,9 @@ def run_backtest(data):
     }
 
 # -------------------------------
-# Interface principale
+# Interface utilisateur Streamlit
 # -------------------------------
-st.set_page_config(page_title="SignalBourse", layout="centered")
+st.set_page_config(page_title="SignalBourse Backtest", layout="centered")
 st.title("📈 SignalBourse – Backtest sur 2 ans")
 
 ticker = st.text_input("Nom de l'action / Ticker :", value="AAPL")
@@ -65,13 +69,13 @@ if ticker:
         st.error("Aucune donnée pour ce ticker.")
     else:
         st.subheader("Graphique")
-        ma20 = data["Close"].rolling(20).mean()
-        ma50 = data["Close"].rolling(50).mean()
+        data["MA20"] = data["Close"].rolling(window=20).mean()
+        data["MA50"] = data["Close"].rolling(window=50).mean()
 
         fig, ax = plt.subplots()
         ax.plot(data.index, data["Close"], label="Cours")
-        ax.plot(data.index, ma20, label="MA20", linestyle="--")
-        ax.plot(data.index, ma50, label="MA50", linestyle=":")
+        ax.plot(data.index, data["MA20"], label="MA20", linestyle="--")
+        ax.plot(data.index, data["MA50"], label="MA50", linestyle=":")
         ax.legend()
         st.pyplot(fig)
 
