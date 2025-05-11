@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import matplotlib.pyplot as plt
 import json
+import math
 
 # 1) Configuration de la page
 st.set_page_config(page_title="SignalBourse", layout="centered")
@@ -10,7 +11,7 @@ st.set_page_config(page_title="SignalBourse", layout="centered")
 # 2) En-tête
 st.title("📈 SignalBourse – Opportunités par secteur")
 st.markdown(
-    "Signal unique (Acheter/Attendre/Vendre) + top 5 opportunités dans le même secteur."
+    "Signal unique (Acheter / Attendre / Vendre) + top 5 opportunités dans le même secteur."
 )
 
 # 3) Saisie du ticker et récupération du secteur
@@ -41,7 +42,7 @@ vol   = int(data["Volume"].iloc[-1])
 vol20 = data["VolAvg20"].iloc[-1]
 
 # 6) Si pas assez de données pour le signal principal
-if pd.isna(ma20) or pd.isna(ma50) or pd.isna(vol20):
+if any(map(lambda x: pd.isna(x), [ma20, ma50, vol20])):
     st.subheader("🚦 Signal principal")
     st.warning("Données insuffisantes pour un signal fiable.")
     st.stop()
@@ -60,9 +61,8 @@ st.pyplot(fig)
 
 # 8) Signal principal
 st.subheader("🚦 Signal principal")
-is_buy  = (last > ma20 > ma50) and (vol > vol20)
-is_sell = (last < ma20 < ma50) and (vol < vol20)
-
+is_buy  = (last > ma20 and ma20 > ma50 and vol > vol20)
+is_sell = (last < ma20 and ma20 < ma50 and vol < vol20)
 if is_buy:
     st.success("🟢 ACHETER maintenant")
 elif is_sell:
@@ -82,29 +82,35 @@ buy_list = []
 for sym in universe:
     if sym == ticker:
         continue
+
     df = yf.download(sym, period="3mo", interval="1d", progress=False)
     if df.shape[0] < 50:
         continue
 
-    # calcul des moyennes et volumes
-    m20 = df["Close"].rolling(20).mean().iloc[-1]
-    m50 = df["Close"].rolling(50).mean().iloc[-1]
-    v   = df["Volume"].iloc[-1]
-    v20 = df["Volume"].rolling(20).mean().iloc[-1]
+    # Calcul des indicateurs
+    m20_ = df["Close"].rolling(20).mean().iloc[-1]
+    m50_ = df["Close"].rolling(50).mean().iloc[-1]
+    v_   = int(df["Volume"].iloc[-1])
+    v20_ = df["Volume"].rolling(20).mean().iloc[-1]
 
-    # on vérifie d'abord que ce sont des floats valides
-    if pd.notna(m20) and pd.notna(m50) and pd.notna(v20):
-        last_c = float(df["Close"].iloc[-1])
-        m20_f  = float(m20)
-        m50_f  = float(m50)
-        v20_f  = float(v20)
+    # On convertit en float et on vérifie qu'on n'a pas un NaN
+    try:
+        m20_f = float(m20_)
+        m50_f = float(m50_)
+        v20_f = float(v20_)
+    except Exception:
+        continue
+    if math.isnan(m20_f) or math.isnan(m50_f) or math.isnan(v20_f):
+        continue
 
-        # conditions décomposées (pas de comparaison chaînée)
-        if (last_c > m20_f) and (m20_f > m50_f) and (v > v20_f):
-            pct = (last_c - m20_f) / m20_f * 100
-            buy_list.append((sym, last_c, pct))
+    last_f = float(df["Close"].iloc[-1])
 
-# tri et affichage
+    # Conditions décomposées, sans comparaison chaînée
+    if (last_f > m20_f) and (m20_f > m50_f) and (v_ > v20_f):
+        pct = (last_f - m20_f) / m20_f * 100
+        buy_list.append((sym, last_f, pct))
+
+# Tri et affichage
 buy_list.sort(key=lambda x: x[2], reverse=True)
 if buy_list:
     for sym, price, pct in buy_list[:5]:
