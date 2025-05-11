@@ -4,7 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import json
 
-# 1) Config de la page
+# 1) Configuration de la page
 st.set_page_config(page_title="SignalBourse", layout="centered")
 
 # 2) En-tête
@@ -18,11 +18,12 @@ ticker = st.text_input("Ticker :", "AAPL").upper().strip()
 if not ticker:
     st.info("🔍 Entrez un ticker pour démarrer.")
     st.stop()
+
 info   = yf.Ticker(ticker).info
 sector = info.get("sector", "Inconnu")
 st.markdown(f"**Secteur détecté :** {sector}")
 
-# 4) Récupération des données du ticker principal
+# 4) Récupération des données principales
 data = yf.download(ticker, period="6mo", interval="1d", progress=False)
 if data.empty:
     st.error("❌ Ticker introuvable.")
@@ -39,13 +40,13 @@ ma50  = data["MA50"].iloc[-1]
 vol   = int(data["Volume"].iloc[-1])
 vol20 = data["VolAvg20"].iloc[-1]
 
-# Si pas assez de données pour le signal principal
+# 6) Si pas assez de données pour le signal principal
 if pd.isna(ma20) or pd.isna(ma50) or pd.isna(vol20):
     st.subheader("🚦 Signal principal")
     st.warning("Données insuffisantes pour un signal fiable.")
     st.stop()
 
-# 6) Affichage du graphique et volume
+# 7) Graphique & volume
 st.subheader("📊 Graphique & Volume")
 fig, (ax1, ax2) = plt.subplots(2,1, figsize=(6,6), sharex=True)
 ax1.plot(data.index, data["Close"], label="Cours", linewidth=2)
@@ -57,7 +58,7 @@ ax2.plot(data.index, data["VolAvg20"], color="orange", label="Vol Moy20")
 ax2.legend()
 st.pyplot(fig)
 
-# 7) Calcul du signal principal
+# 8) Signal principal
 st.subheader("🚦 Signal principal")
 is_buy  = (last > ma20 > ma50) and (vol > vol20)
 is_sell = (last < ma20 < ma50) and (vol < vol20)
@@ -69,7 +70,7 @@ elif is_sell:
 else:
     st.info("🟡 ATTENDRE")
 
-# 8) Top 5 dans le même secteur
+# 9) Top 5 opportunités dans le même secteur
 st.subheader(f"✅ Top opportunités dans « {sector} »")
 try:
     with open("sector_tickers.json") as f:
@@ -84,15 +85,26 @@ for sym in universe:
     df = yf.download(sym, period="3mo", interval="1d", progress=False)
     if df.shape[0] < 50:
         continue
+
+    # calcul des moyennes et volumes
     m20 = df["Close"].rolling(20).mean().iloc[-1]
     m50 = df["Close"].rolling(50).mean().iloc[-1]
     v   = df["Volume"].iloc[-1]
     v20 = df["Volume"].rolling(20).mean().iloc[-1]
-    if pd.notna(m20) and pd.notna(m50) and (df["Close"].iloc[-1] > m20 > m50) and (v > v20):
-        pct = (df["Close"].iloc[-1] - m20) / m20 * 100
-        buy_list.append((sym, df["Close"].iloc[-1], pct))
 
-# Trier et afficher
+    # on vérifie d'abord que ce sont des floats valides
+    if pd.notna(m20) and pd.notna(m50) and pd.notna(v20):
+        last_c = float(df["Close"].iloc[-1])
+        m20_f  = float(m20)
+        m50_f  = float(m50)
+        v20_f  = float(v20)
+
+        # conditions décomposées (pas de comparaison chaînée)
+        if (last_c > m20_f) and (m20_f > m50_f) and (v > v20_f):
+            pct = (last_c - m20_f) / m20_f * 100
+            buy_list.append((sym, last_c, pct))
+
+# tri et affichage
 buy_list.sort(key=lambda x: x[2], reverse=True)
 if buy_list:
     for sym, price, pct in buy_list[:5]:
