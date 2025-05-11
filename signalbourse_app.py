@@ -5,37 +5,38 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# ————— CONFIG —————
+# ————— CONFIGURATION DE LA PAGE —————
 st.set_page_config(page_title="SignalBourse", layout="centered")
 
-# ————— CHARGEMENT DU PANEL —————
+# ————— CHARGEMENT DE TA WATCHLIST —————
+# Assure-toi que le fichier mes_actions.json est à la racine
 with open("mes_actions.json", "r") as f:
     tickers_list = json.load(f)
 
 # ————— SIDEBAR —————
 st.sidebar.title("Paramètres")
-periode = st.sidebar.selectbox("Période historique", ["6mo", "1y", "2y"], index=2)
+periode    = st.sidebar.selectbox("Période historique", ["6mo", "1y", "2y"], index=2)
 vol_window = st.sidebar.slider("Fenêtre volume (jours)", 5, 50, 20)
 
-# ————— INPUT —————
+# ————— INTERFACE PRINCIPALE —————
 st.title("📈 SignalBourse – Analyse rapide")
 ticker = st.text_input("Saisis un ticker", value="AAPL").upper()
 if not ticker:
     st.error("👉 Renseigne un ticker pour commencer.")
     st.stop()
 
-# ————— RÉCUP DONNÉES —————
+# ————— RÉCUPÉRATION DES DONNÉES —————
 data = yf.download(ticker, period=periode, interval="1d", progress=False)
 if data.empty:
     st.error(f"Aucune donnée pour « {ticker} ».")
     st.stop()
 
-# ————— CALCULS —————
-data["MA20"] = data["Close"].rolling(20).mean()
-data["MA50"] = data["Close"].rolling(50).mean()
-data["VolMoy"] = data["Volume"].rolling(vol_window).mean()
+# ————— CALCUL DES INDICATEURS —————
+data["MA20"]   = data["Close"].rolling(window=20).mean()
+data["MA50"]   = data["Close"].rolling(window=50).mean()
+data["VolMoy"] = data["Volume"].rolling(window=vol_window).mean()
 
-# ————— GRAPHIQUE PRIX + MA —————
+# ————— AFFICHAGE DU GRAPHIQUE DES PRIX & MAs —————
 fig, ax = plt.subplots(figsize=(8, 4))
 ax.plot(data.index, data["Close"], label="Cours")
 ax.plot(data.index, data["MA20"], "--", label="MA20")
@@ -44,47 +45,49 @@ ax.legend(loc="upper left")
 ax.set_ylabel("Prix USD")
 st.pyplot(fig)
 
-# ————— VOLUME (Streamlit natif) —————
+# ————— AFFICHAGE DU VOLUME & DE SA MOYENNE —————
 st.subheader("📊 Volume & Moyenne volume")
 st.bar_chart(data["Volume"])
 st.line_chart(data["VolMoy"])
 
-# ————— SIGNAL PRINCIPAL —————
-last = data["Close"].iloc[-1]
-ma20 = data["MA20"].iloc[-1]
-ma50 = data["MA50"].iloc[-1]
+# ————— SIGNAL PRINCIPAL (ACHAT / VENTE / ATTENDRE) —————
+# On force la conversion en float pour éviter toute Series ambiguë
+last       = float(data["Close"].iloc[-1])
+ma20       = float(data["MA20"].iloc[-1])
+ma50       = float(data["MA50"].iloc[-1])
 
-if np.isnan(ma20) or np.isnan(ma50):
-    st.info("Signal principal non disponible (trop peu de données).")
+# calcul des flags d’achat et de vente
+buy_signal  = (last > ma20) and (ma20 > ma50)
+sell_signal = (last < ma20) and (ma20 < ma50)
+
+if buy_signal:
+    st.success("✅ ACHETER maintenant")
+elif sell_signal:
+    st.error("❌ VENDRE maintenant")
 else:
-    if (last > ma20) and (ma20 > ma50):
-        st.success("✅ ACHETER maintenant")
-    elif (last < ma20) and (ma20 < ma50):
-        st.error("❌ VENDRE maintenant")
-    else:
-        st.warning("⚠️ ATTENDRE")
+    st.warning("⚠️ ATTENDRE")
 
-# ————— DÉTAILS —————
+# ————— DÉTAILS CHIFFRÉS —————
 vol_today = int(data["Volume"].iloc[-1])
-vol_moy = int(data["VolMoy"].iloc[-1])
-ecart_ma20 = 100 * (last / ma20 - 1)
+vol_moy   = int(data["VolMoy"].iloc[-1])
+ecart     = 100 * (last / ma20 - 1)
 
 st.markdown(f"- **Prix actuel** : {last:.2f} USD")
-st.markdown(f"- **Écart vs MA20** : {ecart_ma20:+.2f}%")
+st.markdown(f"- **Écart vs MA20** : {ecart:+.2f}%")
 st.markdown(f"- **Volume ajd** : {vol_today:,d} | Moy{vol_window}j : {vol_moy:,d}")
 
-# ————— TOP 5 OPPORTUNITÉS —————
+# ————— TOP 5 OPPORTUNITÉS SUR TON PANEL —————
 st.header("✅ Top 5 opportunités sur ton panel")
 opps = []
 for tk in tickers_list:
     df = yf.download(tk, period="6mo", interval="1d", progress=False)
     if df.empty: 
         continue
-    ma20_ = df["Close"].rolling(20).mean().iloc[-1]
-    close_ = df["Close"].iloc[-1]
-    if not np.isnan(ma20_) and (close_ > ma20_):
-        diff = 100 * (close_ / ma20_ - 1)
-        opps.append((tk, close_, diff))
+    m20 = df["Close"].rolling(window=20).mean().iloc[-1]
+    c   = df["Close"].iloc[-1]
+    if not np.isnan(m20) and (c > m20):
+        diff = 100 * (c / m20 - 1)
+        opps.append((tk, c, diff))
 
 opps = sorted(opps, key=lambda x: x[2], reverse=True)[:5]
 if not opps:
