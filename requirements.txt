@@ -1,7 +1,8 @@
+
 streamlit
 yfinance
 pandas
+numpy
 matplotlib
 lxml
 html5lib
-numpy
