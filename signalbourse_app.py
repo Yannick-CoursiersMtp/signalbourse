@@ -12,8 +12,7 @@ def get_data(ticker: str) -> pd.DataFrame:
     df["MA20"] = df["Close"].rolling(window=20).mean()
     df["MA50"] = df["Close"].rolling(window=50).mean()
     df["Vol20"] = df["Volume"].rolling(window=20).mean()
-    # On supprime les lignes partielles (NaN) pour éviter les ValueError
-    df.dropna(inplace=True)
+    df.dropna(inplace=True)  # on enlève toutes les dates incomplètes
     return df
 
 # -------------------------------
@@ -33,7 +32,7 @@ def generate_signal(df: pd.DataFrame) -> str:
 # 3) Backtest simple
 # -------------------------------
 def run_backtest(df: pd.DataFrame) -> dict:
-    # On reconstruit la colonne Signal
+    df = df.copy()
     df["Signal"] = (
         (df["Close"] > df["MA20"]) &
         (df["MA20"] > df["MA50"]) &
@@ -52,20 +51,15 @@ def run_backtest(df: pd.DataFrame) -> dict:
             trades.append((entry_price, exit_price))
             in_trade = False
 
-    # Si on est resté en trade à la fin
+    # Si on est encore positionné à la fin
     if in_trade:
         trades.append((entry_price, df["Close"].iloc[-1]))
 
-    # Calcul des stats
     gains = [(exit - entry) / entry * 100 for entry, exit in trades]
     nb, wins = len(gains), sum(1 for g in gains if g > 0)
     win_rate = round(100 * wins / nb, 2) if nb else 0
     avg_gain = round(sum(gains) / nb, 2) if nb else 0
-    return {
-        "nb_trades": nb,
-        "win_rate": win_rate,
-        "avg_gain": avg_gain
-    }
+    return {"nb_trades": nb, "win_rate": win_rate, "avg_gain": avg_gain}
 
 # -------------------------------
 # 4) Affichage Streamlit
@@ -80,7 +74,7 @@ if ticker:
     if data.empty:
         st.error("Pas de données pour ce ticker.")
     else:
-        # Graphiques prix et volume
+        # ——— Graphique prix & MAs ———
         st.subheader("📊 Graphique Cours & Moyennes Mobiles")
         fig, ax = plt.subplots(figsize=(8, 4))
         ax.plot(data["Close"], label="Cours")
@@ -89,20 +83,22 @@ if ticker:
         ax.legend()
         st.pyplot(fig)
 
+        # ——— Graphique Volume ———
         st.subheader("📈 Volume & Volume Moy.20j")
         fig2, ax2 = plt.subplots(figsize=(8, 2))
-        ax2.bar(data.index, data["Volume"], alpha=0.3, label="Vol quotidien")
+        # on fixe width numérique pour éviter le Timedelta non convertible
+        ax2.bar(data.index, data["Volume"], width=0.8, alpha=0.3, label="Vol quotidien")
         ax2.plot(data["Vol20"], label="Vol Moy20", color="orange")
         ax2.legend()
         st.pyplot(fig2)
 
-        # Signal clair
+        # ——— Signal Clair ———
         signal = generate_signal(data)
-        couleur = {"ACHETER":"success","VENDRE":"error","ATTENDRE":"warning"}[signal]
         st.subheader("🚦 Signal Clair")
+        col = {"ACHETER": "success", "VENDRE": "error", "ATTENDRE": "warning"}[signal]
         st.metric(label="Action à", value=signal, delta="")
 
-        # Backtest
+        # ——— Backtest ———
         stats = run_backtest(data)
         st.subheader("🔄 Résultats du Backtest")
         st.write(f"- Nombre de trades : **{stats['nb_trades']}**")
