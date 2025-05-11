@@ -7,22 +7,26 @@ import matplotlib.pyplot as plt
 # Fonction backtest
 # -------------------------------
 def run_backtest(data):
-    ma20 = data["Close"].rolling(window=20).mean()
-    ma50 = data["Close"].rolling(window=50).mean()
-    vol20 = data["Volume"].rolling(window=20).mean()
+    data = data.copy()
+    data["MA20"] = data["Close"].rolling(window=20).mean()
+    data["MA50"] = data["Close"].rolling(window=50).mean()
+    data["Vol20"] = data["Volume"].rolling(window=20).mean()
 
-    signal = (data["Close"] > ma20) & (ma20 > ma50) & (data["Volume"] > vol20)
-    data["Signal"] = signal
+    data["Signal"] = (
+        (data["Close"] > data["MA20"])
+        & (data["MA20"] > data["MA50"])
+        & (data["Volume"] > data["Vol20"])
+    )
 
     trades = []
     in_trade = False
     entry_price = 0
 
     for i in range(1, len(data)):
-        if signal.iloc[i] and not in_trade:
+        if data["Signal"].iloc[i] and not in_trade:
             entry_price = data["Close"].iloc[i]
             in_trade = True
-        elif in_trade and not signal.iloc[i]:
+        elif in_trade and not data["Signal"].iloc[i]:
             exit_price = data["Close"].iloc[i]
             trades.append((entry_price, exit_price))
             in_trade = False
