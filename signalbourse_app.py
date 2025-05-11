@@ -44,16 +44,15 @@ ax.legend(loc="upper left")
 ax.set_ylabel("Prix USD")
 st.pyplot(fig)
 
-# ————— VOLUME —————
+# ————— VOLUME (Streamlit natif) —————
 st.subheader("📊 Volume & Moyenne volume")
 st.bar_chart(data["Volume"])
 st.line_chart(data["VolMoy"])
 
 # ————— SIGNAL PRINCIPAL —————
-# on utilise .item() pour forcer des scalaires
-last = data["Close"].iloc[-1].item()
-ma20 = data["MA20"].iloc[-1].item()
-ma50 = data["MA50"].iloc[-1].item()
+last = data["Close"].iloc[-1]
+ma20 = data["MA20"].iloc[-1]
+ma50 = data["MA50"].iloc[-1]
 
 if np.isnan(ma20) or np.isnan(ma50):
     st.info("Signal principal non disponible (trop peu de données).")
@@ -66,25 +65,28 @@ else:
         st.warning("⚠️ ATTENDRE")
 
 # ————— DÉTAILS —————
+vol_today = int(data["Volume"].iloc[-1])
+vol_moy = int(data["VolMoy"].iloc[-1])
+ecart_ma20 = 100 * (last / ma20 - 1)
+
 st.markdown(f"- **Prix actuel** : {last:.2f} USD")
-st.markdown(f"- **Écart vs MA20** : {100*(last/ma20-1):+.2f}%")
-st.markdown(
-    f"- **Volume ajd** : {data['Volume'].iloc[-1]:,d} | Moy{vol_window}j : {int(data['VolMoy'].iloc[-1])}"
-)
+st.markdown(f"- **Écart vs MA20** : {ecart_ma20:+.2f}%")
+st.markdown(f"- **Volume ajd** : {vol_today:,d} | Moy{vol_window}j : {vol_moy:,d}")
 
 # ————— TOP 5 OPPORTUNITÉS —————
 st.header("✅ Top 5 opportunités sur ton panel")
 opps = []
 for tk in tickers_list:
     df = yf.download(tk, period="6mo", interval="1d", progress=False)
-    if df.empty:
+    if df.empty: 
         continue
     ma20_ = df["Close"].rolling(20).mean().iloc[-1]
     close_ = df["Close"].iloc[-1]
     if not np.isnan(ma20_) and (close_ > ma20_):
-        opps.append((tk, close_, 100*(close_/ma20_-1)))
-opps = sorted(opps, key=lambda x: x[2], reverse=True)[:5]
+        diff = 100 * (close_ / ma20_ - 1)
+        opps.append((tk, close_, diff))
 
+opps = sorted(opps, key=lambda x: x[2], reverse=True)[:5]
 if not opps:
     st.info("Aucune opportunité détectée.")
 else:
