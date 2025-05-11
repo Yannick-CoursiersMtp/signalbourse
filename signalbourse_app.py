@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="SignalBourse", layout="centered")
 
 # ————— CHARGEMENT DU PANEL —————
+# Crée un fichier mes_actions.json à la racine contenant ta liste de tickers
 with open("mes_actions.json", "r") as f:
     tickers_list = json.load(f)
 
@@ -31,46 +32,50 @@ if data.empty:
     st.stop()
 
 # ————— CALCULS —————
-data["MA20"] = data["Close"].rolling(20).mean()
-data["MA50"] = data["Close"].rolling(50).mean()
+data["MA20"]  = data["Close"].rolling(20).mean()
+data["MA50"]  = data["Close"].rolling(50).mean()
 data["VolMoy"] = data["Volume"].rolling(vol_window).mean()
 
 # ————— GRAPHIQUE PRIX + MA —————
 fig, ax = plt.subplots(figsize=(8, 4))
 ax.plot(data.index, data["Close"], label="Cours")
-ax.plot(data.index, data["MA20"], "--", label="MA20")
-ax.plot(data.index, data["MA50"], ":", label="MA50")
+ax.plot(data.index, data["MA20"],  "--", label="MA20")
+ax.plot(data.index, data["MA50"],  ":",  label="MA50")
 ax.legend(loc="upper left")
 ax.set_ylabel("Prix USD")
 st.pyplot(fig)
 
-# ————— VOLUME NATIF STREAMLIT —————
+# ————— VOLUME (Streamlit natif) —————
 st.subheader("📊 Volume & Moyenne volume")
 st.bar_chart(data["Volume"])
 st.line_chart(data["VolMoy"])
 
 # ————— SIGNAL PRINCIPAL —————
-# conversion en float pour éviter le ValueError « Series is ambiguous »
-last  = float(data["Close"].iloc[-1])
-ma20   = float(data["MA20"].iloc[-1])
-ma50   = float(data["MA50"].iloc[-1])
-
+last  = data["Close"].iloc[-1]
+ma20  = data["MA20"].iloc[-1]
+ma50  = data["MA50"].iloc[-1]
 if np.isnan(ma20) or np.isnan(ma50):
     st.info("Signal principal non disponible (trop peu de données).")
 else:
-    if (last > ma20) and (ma20 > ma50):
+    if last > ma20 > ma50:
         st.success("✅ ACHETER maintenant")
-    elif (last < ma20) and (ma20 < ma50):
+    elif last < ma20 < ma50:
         st.error("❌ VENDRE maintenant")
     else:
         st.warning("⚠️ ATTENDRE")
 
 # ————— DÉTAILS —————
-st.markdown(f"- **Prix actuel** : {last:.2f} USD")
-st.markdown(f"- **Écart vs MA20** : {100*(last/ma20-1):+.2f}%")
-st.markdown(f"- **Volume ajd** : {data['Volume'].iloc[-1]:,d} | Moy{vol_window}j : {data['VolMoy'].iloc[-1]:,.0f}")
+last_price = float(data["Close"].iloc[-1])
+vol_today   = int  (data["Volume"].iloc[-1])
+vol_moy     = float(data["VolMoy"].iloc[-1])
 
-# ————— TOP 5 OPPORTUNITÉS SUR LE PANEL —————
+st.markdown(f"- **Prix actuel** : {last_price:.2f} USD")
+st.markdown(f"- **Écart vs MA20** : {100*(last_price/ma20-1):+.2f}%")
+st.markdown(
+    f"- **Volume ajd** : {vol_today:,d} | Moy{vol_window}j : {vol_moy:,.0f}"
+)
+
+# ————— TOP 5 OPPORTUNITÉS —————
 st.header("✅ Top 5 opportunités sur ton panel")
 opps = []
 for tk in tickers_list:
@@ -80,9 +85,7 @@ for tk in tickers_list:
     ma20_  = df["Close"].rolling(20).mean().iloc[-1]
     close_ = df["Close"].iloc[-1]
     if not np.isnan(ma20_) and close_ > ma20_:
-        diff = 100*(close_/ma20_-1)
-        opps.append((tk, float(close_), diff))
-# tri et top 5
+        opps.append((tk, close_, 100*(close_/ma20_-1)))
 opps = sorted(opps, key=lambda x: x[2], reverse=True)[:5]
 if not opps:
     st.info("Aucune opportunité détectée.")
