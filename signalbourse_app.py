@@ -25,7 +25,7 @@ if not ticker:
     st.stop()
 
 # ————— RÉCUP DONNÉES —————
-data = yf.download(ticker, period=periode, interval="1d")
+data = yf.download(ticker, period=periode, interval="1d", progress=False)
 if data.empty:
     st.error(f"Aucune donnée pour « {ticker} ».")
     st.stop()
@@ -50,19 +50,10 @@ st.bar_chart(data["Volume"])
 st.line_chart(data["VolMoy"])
 
 # ————— SIGNAL PRINCIPAL —————
-# on récupère toujours un scalaire avec iloc ou values[-1]
-try:
-    last  = data["Close"].iloc[-1]
-except Exception:
-    last = data["Close"].values[-1]
-try:
-    ma20 = data["MA20"].iloc[-1]
-except Exception:
-    ma20 = data["MA20"].values[-1]
-try:
-    ma50 = data["MA50"].iloc[-1]
-except Exception:
-    ma50 = data["MA50"].values[-1]
+# on utilise .item() pour forcer des scalaires
+last = data["Close"].iloc[-1].item()
+ma20 = data["MA20"].iloc[-1].item()
+ma50 = data["MA50"].iloc[-1].item()
 
 if np.isnan(ma20) or np.isnan(ma50):
     st.info("Signal principal non disponible (trop peu de données).")
@@ -77,7 +68,9 @@ else:
 # ————— DÉTAILS —————
 st.markdown(f"- **Prix actuel** : {last:.2f} USD")
 st.markdown(f"- **Écart vs MA20** : {100*(last/ma20-1):+.2f}%")
-st.markdown(f"- **Volume ajd** : {int(data['Volume'].iloc[-1]):,d} | Moy{vol_window}j : {int(data['VolMoy'].iloc[-1]):,d}")
+st.markdown(
+    f"- **Volume ajd** : {data['Volume'].iloc[-1]:,d} | Moy{vol_window}j : {int(data['VolMoy'].iloc[-1])}"
+)
 
 # ————— TOP 5 OPPORTUNITÉS —————
 st.header("✅ Top 5 opportunités sur ton panel")
@@ -86,11 +79,12 @@ for tk in tickers_list:
     df = yf.download(tk, period="6mo", interval="1d", progress=False)
     if df.empty:
         continue
-    m20 = df["Close"].rolling(20).mean().iloc[-1]
-    c   = df["Close"].iloc[-1]
-    if not np.isnan(m20) and (c > m20):
-        opps.append((tk, c, 100*(c/m20-1)))
+    ma20_ = df["Close"].rolling(20).mean().iloc[-1]
+    close_ = df["Close"].iloc[-1]
+    if not np.isnan(ma20_) and (close_ > ma20_):
+        opps.append((tk, close_, 100*(close_/ma20_-1)))
 opps = sorted(opps, key=lambda x: x[2], reverse=True)[:5]
+
 if not opps:
     st.info("Aucune opportunité détectée.")
 else:
