@@ -44,10 +44,12 @@ ax1.plot(data.index, data["MA50"], ":", label="MA50")
 ax1.legend(loc="upper left")
 ax1.set_ylabel("Prix USD")
 
-ax2.bar(data.index, data["Volume"], width=0.8, alpha=0.3, label="Volume quotidien")
+# -- ici on retire width pour éviter l'erreur --
+ax2.bar(data.index, data["Volume"], alpha=0.3, label="Volume quotidien")
 ax2.plot(data.index, data["Vol_Moy"], "-", linewidth=2, label=f"Volume Moy{vol_window}j")
 ax2.legend(loc="upper left")
 ax2.set_ylabel("Volume")
+
 st.pyplot(fig)
 
 # —————— SIGNAL PRINCIPAL ——————
@@ -78,11 +80,11 @@ st.header("✅ Top 5 opportunités sur ton panel")
 opps = []
 for tk in tickers_list:
     try:
-        df = yf.download(tk, period="6mo", interval="1d")
+        df = yf.download(tk, period="6mo", interval="1d", progress=False)
         if df.empty: continue
         ma20_ = df["Close"].rolling(20).mean().iloc[-1]
         close_ = df["Close"].iloc[-1]
-        if close_ > ma20_:  # condition simplifiée d'achat
+        if close_ > ma20_:
             diff = 100*(close_/ma20_-1)
             opps.append((tk, close_, diff))
     except:
