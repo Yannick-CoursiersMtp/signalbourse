@@ -4,88 +4,107 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # -------------------------------
-# Fonction de backtest corrigée
+# 1) Récupération et préparation des données
 # -------------------------------
-def run_backtest(data):
-    data = data.copy()
+@st.cache_data(ttl=86400)
+def get_data(ticker: str) -> pd.DataFrame:
+    df = yf.download(ticker, period="2y", interval="1d")
+    df["MA20"] = df["Close"].rolling(window=20).mean()
+    df["MA50"] = df["Close"].rolling(window=50).mean()
+    df["Vol20"] = df["Volume"].rolling(window=20).mean()
+    # On supprime les lignes partielles (NaN) pour éviter les ValueError
+    df.dropna(inplace=True)
+    return df
 
-    # Calcul des indicateurs nécessaires
-    data["MA20"] = data["Close"].rolling(window=20).mean()
-    data["MA50"] = data["Close"].rolling(window=50).mean()
-    data["Vol20"] = data["Volume"].rolling(window=20).mean()
+# -------------------------------
+# 2) Génération du signal clair
+# -------------------------------
+def generate_signal(df: pd.DataFrame) -> str:
+    last, ma20, ma50 = df["Close"].iloc[-1], df["MA20"].iloc[-1], df["MA50"].iloc[-1]
+    vol, vol20 = df["Volume"].iloc[-1], df["Vol20"].iloc[-1]
 
-    # Création du signal d'achat
-    data["Signal"] = (
-        (data["Close"] > data["MA20"])
-        & (data["MA20"] > data["MA50"])
-        & (data["Volume"] > data["Vol20"])
+    if last > ma20 > ma50 and vol >= 0.8 * vol20:
+        return "ACHETER"
+    if last < ma20 < ma50 and vol >= 0.8 * vol20:
+        return "VENDRE"
+    return "ATTENDRE"
+
+# -------------------------------
+# 3) Backtest simple
+# -------------------------------
+def run_backtest(df: pd.DataFrame) -> dict:
+    # On reconstruit la colonne Signal
+    df["Signal"] = (
+        (df["Close"] > df["MA20"]) &
+        (df["MA20"] > df["MA50"]) &
+        (df["Volume"] >= 0.8 * df["Vol20"])
     )
-
-    trades = []
     in_trade = False
-    entry_price = 0
+    trades = []
+    entry_price = None
 
-    for i in range(1, len(data)):
-        if data["Signal"].iloc[i] and not in_trade:
-            entry_price = data["Close"].iloc[i]
+    for i in range(len(df)):
+        if df["Signal"].iloc[i] and not in_trade:
+            entry_price = df["Close"].iloc[i]
             in_trade = True
-        elif in_trade and not data["Signal"].iloc[i]:
-            exit_price = data["Close"].iloc[i]
+        elif in_trade and not df["Signal"].iloc[i]:
+            exit_price = df["Close"].iloc[i]
             trades.append((entry_price, exit_price))
             in_trade = False
 
+    # Si on est resté en trade à la fin
     if in_trade:
-        trades.append((entry_price, data["Close"].iloc[-1]))
+        trades.append((entry_price, df["Close"].iloc[-1]))
 
-    gains = [round((exit - entry) / entry * 100, 2) for entry, exit in trades]
-    win_rate = round(100 * sum([g > 0 for g in gains]) / len(gains), 2) if gains else 0
-    avg_gain = round(sum(gains) / len(gains), 2) if gains else 0
-    profit_factor = round(
-        sum([g for g in gains if g > 0]) / -sum([g for g in gains if g < 0]), 2
-    ) if any(g < 0 for g in gains) else "Infini"
-
-    score = round(win_rate * 0.5 + avg_gain * 0.5, 2)
-
+    # Calcul des stats
+    gains = [(exit - entry) / entry * 100 for entry, exit in trades]
+    nb, wins = len(gains), sum(1 for g in gains if g > 0)
+    win_rate = round(100 * wins / nb, 2) if nb else 0
+    avg_gain = round(sum(gains) / nb, 2) if nb else 0
     return {
-        "nb_trades": len(gains),
+        "nb_trades": nb,
         "win_rate": win_rate,
-        "avg_gain": avg_gain,
-        "profit_factor": profit_factor,
-        "score": score
+        "avg_gain": avg_gain
     }
 
 # -------------------------------
-# Interface utilisateur Streamlit
+# 4) Affichage Streamlit
 # -------------------------------
-st.set_page_config(page_title="SignalBourse Backtest", layout="centered")
-st.title("📈 SignalBourse – Backtest sur 2 ans")
+st.set_page_config(page_title="SignalBourse", layout="centered")
+st.title("📈 SignalBourse – Analyse et Backtest")
 
 ticker = st.text_input("Nom de l'action / Ticker :", value="AAPL")
 
 if ticker:
-    data = yf.download(ticker, period="2y", interval="1d")
-
+    data = get_data(ticker)
     if data.empty:
-        st.error("Aucune donnée pour ce ticker.")
+        st.error("Pas de données pour ce ticker.")
     else:
-        st.subheader("Graphique")
-        data["MA20"] = data["Close"].rolling(window=20).mean()
-        data["MA50"] = data["Close"].rolling(window=50).mean()
-
-        fig, ax = plt.subplots()
-        ax.plot(data.index, data["Close"], label="Cours")
-        ax.plot(data.index, data["MA20"], label="MA20", linestyle="--")
-        ax.plot(data.index, data["MA50"], label="MA50", linestyle=":")
+        # Graphiques prix et volume
+        st.subheader("📊 Graphique Cours & Moyennes Mobiles")
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.plot(data["Close"], label="Cours")
+        ax.plot(data["MA20"], "--", label="MA20")
+        ax.plot(data["MA50"], ":", label="MA50")
         ax.legend()
         st.pyplot(fig)
 
-        st.subheader("Résultats du backtest (stratégie MA20/MA50 + volume)")
-        resultats = run_backtest(data)
+        st.subheader("📈 Volume & Volume Moy.20j")
+        fig2, ax2 = plt.subplots(figsize=(8, 2))
+        ax2.bar(data.index, data["Volume"], alpha=0.3, label="Vol quotidien")
+        ax2.plot(data["Vol20"], label="Vol Moy20", color="orange")
+        ax2.legend()
+        st.pyplot(fig2)
 
-        st.markdown(f"""
-        - **Nombre de trades** : {resultats['nb_trades']}
-        - **Taux de succès** : {resultats['win_rate']} %
-        - **Gain moyen par trade** : {resultats['avg_gain']} %
-        - **Profit factor** : {resultats['profit_factor']}
-        - **Score de l’opportunité** : {resultats['score']} / 100
-        """)
+        # Signal clair
+        signal = generate_signal(data)
+        couleur = {"ACHETER":"success","VENDRE":"error","ATTENDRE":"warning"}[signal]
+        st.subheader("🚦 Signal Clair")
+        st.metric(label="Action à", value=signal, delta="")
+
+        # Backtest
+        stats = run_backtest(data)
+        st.subheader("🔄 Résultats du Backtest")
+        st.write(f"- Nombre de trades : **{stats['nb_trades']}**")
+        st.write(f"- Taux de succès : **{stats['win_rate']}%**")
+        st.write(f"- Gain moyen par trade : **{stats['avg_gain']}%**")
