@@ -37,13 +37,14 @@ def run_backtest(data):
         sum([g for g in gains if g > 0]) / -sum([g for g in gains if g < 0]), 2
     ) if any(g < 0 for g in gains) else "Infini"
 
+    score = round(win_rate * 0.5 + avg_gain * 0.5, 2)
     return {
         "nb_trades": len(gains),
         "win_rate": win_rate,
         "avg_gain": avg_gain,
         "profit_factor": profit_factor,
+        "score": score
     }
-
 
 # -------------------------------
 # Interface principale
@@ -78,4 +79,5 @@ if ticker:
         - **Taux de succès** : {resultats['win_rate']} %
         - **Gain moyen par trade** : {resultats['avg_gain']} %
         - **Profit factor** : {resultats['profit_factor']}
+        - **Score de l’opportunité** : {resultats['score']} / 100
         """)
